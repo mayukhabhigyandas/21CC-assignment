@@ -1,0 +1,203 @@
+[
+  {
+    "name": "data-pipeline",
+    "bio": "Data engineering ETL Airflow SQL",
+    "skills": [
+      {
+        "name": "ETL",
+        "level": 4
+      },
+      {
+        "name": "Airflow",
+        "level": 4
+      },
+      {
+        "name": "Python",
+        "level": 3
+      },
+      {
+        "name": "SQL",
+        "level": 4
+      }
+    ],
+    "relevant": [
+      1
+    ]
+  },
+  {
+    "name": "python-api",
+    "bio": "Python FastAPI REST APIs",
+    "skills": [
+      {
+        "name": "Python",
+        "level": 4
+      },
+      {
+        "name": "FastAPI",
+        "level": 4
+      },
+      {
+        "name": "SQL",
+        "level": 3
+      }
+    ],
+    "relevant": [
+      2
+    ]
+  },
+  {
+    "name": "frontend",
+    "bio": "JavaScript React frontend",
+    "skills": [
+      {
+        "name": "JavaScript",
+        "level": 4
+      },
+      {
+        "name": "React",
+        "level": 4
+      },
+      {
+        "name": "CSS",
+        "level": 3
+      }
+    ],
+    "relevant": [
+      3,
+      10
+    ]
+  },
+  {
+    "name": "java",
+    "bio": "Java Spring backend",
+    "skills": [
+      {
+        "name": "Java",
+        "level": 4
+      },
+      {
+        "name": "Spring Boot",
+        "level": 4
+      },
+      {
+        "name": "SQL",
+        "level": 3
+      }
+    ],
+    "relevant": [
+      4
+    ]
+  },
+  {
+    "name": "devops",
+    "bio": "Docker Kubernetes AWS cloud",
+    "skills": [
+      {
+        "name": "Docker",
+        "level": 4
+      },
+      {
+        "name": "Kubernetes",
+        "level": 4
+      },
+      {
+        "name": "AWS",
+        "level": 3
+      }
+    ],
+    "relevant": [
+      5
+    ]
+  },
+  {
+    "name": "ml",
+    "bio": "Python pandas machine learning",
+    "skills": [
+      {
+        "name": "Python",
+        "level": 4
+      },
+      {
+        "name": "Pandas",
+        "level": 4
+      },
+      {
+        "name": "Machine Learning",
+        "level": 3
+      }
+    ],
+    "relevant": [
+      6
+    ]
+  },
+  {
+    "name": "sql",
+    "bio": "SQL PostgreSQL databases",
+    "skills": [
+      {
+        "name": "SQL",
+        "level": 4
+      },
+      {
+        "name": "PostgreSQL",
+        "level": 4
+      }
+    ],
+    "relevant": [
+      7
+    ]
+  },
+  {
+    "name": "cloud",
+    "bio": "Azure AWS infrastructure",
+    "skills": [
+      {
+        "name": "Azure",
+        "level": 4
+      },
+      {
+        "name": "AWS",
+        "level": 4
+      }
+    ],
+    "relevant": [
+      8
+    ]
+  },
+  {
+    "name": "javascript",
+    "bio": "JavaScript TypeScript web",
+    "skills": [
+      {
+        "name": "JavaScript",
+        "level": 4
+      },
+      {
+        "name": "TypeScript",
+        "level": 3
+      }
+    ],
+    "relevant": [
+      9,
+      3,
+      10
+    ]
+  },
+  {
+    "name": "analyst",
+    "bio": "SQL reporting data analysis",
+    "skills": [
+      {
+        "name": "SQL",
+        "level": 4
+      },
+      {
+        "name": "Data Analysis",
+        "level": 4
+      }
+    ],
+    "relevant": [
+      12
+    ]
+  }
+]

@@ -1,0 +1,38 @@
+{
+  "tools": [
+    {
+      "name": "search_opportunities",
+      "description": "Search and rank opportunities for the authenticated learner.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "mode": {"type": "string", "enum": ["rules", "hybrid"], "default": "hybrid"},
+          "type": {"type": "string", "enum": ["job", "course"]},
+          "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 20}
+        },
+        "required": []
+      },
+      "http": {"method": "GET", "path": "/matches", "auth": "bearer"}
+    },
+    {
+      "name": "explain_match",
+      "description": "Explain why a given opportunity ranks for the authenticated learner.",
+      "parameters": {
+        "type": "object",
+        "properties": {"opportunity_id": {"type": "integer"}},
+        "required": ["opportunity_id"]
+      },
+      "http": {"method": "GET", "path": "/matches?mode=rules", "auth": "bearer"}
+    },
+    {
+      "name": "extract_skills",
+      "description": "Extract structured skills from untrusted resume text using local rules.",
+      "parameters": {
+        "type": "object",
+        "properties": {"resume_text": {"type": "string", "maxLength": 20000}},
+        "required": ["resume_text"]
+      },
+      "http": {"method": "POST", "path": "/profile/extract-skills", "auth": "bearer"}
+    }
+  ]
+}
