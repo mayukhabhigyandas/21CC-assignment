@@ -1,10 +1,10 @@
-from app.database import Base, engine, SessionLocal
+from app.database import initialize_database, SessionLocal
 from app.models import User, Profile, Opportunity
 from app.auth import hash_password
 from app.embeddings import embed_text
 from app.matching import normalize_skill
 
-Base.metadata.create_all(engine)
+initialize_database()
 db = SessionLocal()
 
 if db.query(User).count():

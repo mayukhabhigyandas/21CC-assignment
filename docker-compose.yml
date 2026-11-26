@@ -1,24 +1,43 @@
 services:
   db:
-    image: postgres:16
+    image: pgvector/pgvector:pg16
     environment:
       POSTGRES_DB: opportunities
       POSTGRES_USER: app
       POSTGRES_PASSWORD: app
     ports:
-      - "5432:5432"
+      - "${POSTGRES_HOST_PORT:-5432}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app -d opportunities"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+  seed:
+    build: ./backend
+    command: ["python", "seed.py"]
+    environment:
+      DATABASE_URL: postgresql+psycopg://app:app@db:5432/opportunities
+      EMBEDDING_PROVIDER: fastembed
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - embedding_cache:/root/.cache
   api:
-    build: .
+    build: ./backend
     environment:
       DATABASE_URL: postgresql+psycopg://app:app@db:5432/opportunities
       JWT_SECRET: change-me-for-production
       EMBEDDING_PROVIDER: fastembed
     ports:
-      - "8000:8000"
+      - "${API_HOST_PORT:-8000}:8000"
     depends_on:
-      - db
+      db:
+        condition: service_healthy
+      seed:
+        condition: service_completed_successfully
     volumes:
       - embedding_cache:/root/.cache
 volumes:

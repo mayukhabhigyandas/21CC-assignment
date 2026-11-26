@@ -8,7 +8,7 @@ A small FastAPI service for publishing opportunities and explaining learner-oppo
 docker compose up --build
 ```
 
-The API is at `http://localhost:8000`; Swagger UI is at `/docs`.
+The API is at `http://localhost:8000`; Swagger UI is at `/docs`. Compose waits for PostgreSQL, seeds the demo data, and then starts the API.
 
 Seed credentials:
 - Admin: `admin@example.com` / `admin123`
@@ -17,7 +17,8 @@ Seed credentials:
 Seed and run locally:
 
 ```bash
-pip install -r requirements.txt
+python -m pip install -r backend/requirements.txt
+cd backend
 python seed.py
 uvicorn app.main:app --reload
 ```
@@ -25,11 +26,14 @@ uvicorn app.main:app --reload
 Tests:
 
 ```bash
+cd backend
 pytest -q
-python evaluate.py          
+python evaluate.py
 ```
 
-Set `DATABASE_URL` for PostgreSQL. Docker Compose starts PostgreSQL and the API. The app stores opportunity and learner vectors as JSON vectors and performs cosine search locally; JSON is used to keep the test database portable rather than requiring a vector extension.
+Set `DATABASE_URL` to use another database. Docker Compose uses PostgreSQL with pgvector and creates an HNSW cosine index for opportunity embeddings. SQLite remains supported for tests, where vectors are stored as JSON and ranked locally.
+
+The backend application, its tests, seed/evaluation scripts, and agent tool definitions are in `backend/`. The React learner interface is in `frontend/` and supports account access, skill profile editing, and ranked matches with explanations. Run the backend on port 8000, then run `npm install` and `npm run dev` from `frontend/` to open the UI at `http://localhost:5173`.
 
 ## API overview
 
@@ -38,6 +42,7 @@ Set `DATABASE_URL` for PostgreSQL. Docker Compose starts PostgreSQL and the API.
 - `GET/PUT /profile` (authenticated learner's own profile)
 - `POST /profile/extract-skills`
 - `GET /matches?mode=rules|hybrid&type=job|course&limit=20`
+- `GET /matches/{opportunity_id}` (explain one opportunity for the authenticated learner)
 - `GET /agent/tools`, `GET /health`
 
 Validation failures and HTTP errors return `{"error":{"code","message","details"}}` shaped JSON. No stack traces are returned.
@@ -50,17 +55,17 @@ Names are trimmed, lowercased, separator-normalised, and alias-mapped (for examp
 
 Semantic ranking embeds opportunity title, description and skills, and learner bio plus skills using `BAAI/bge-small-en-v1.5` via FastEmbed. Embedding is local. The top 20 cosine candidates are retained. `EMBEDDING_PROVIDER=off` or model startup failure uses a deterministic local hash fallback for tests and offline resilience.
 
-Hybrid ranking uses Reciprocal Rank Fusion with k=60 across rule rank and semantic rank. Each result reports rule and semantic RRF contributions. Ties use title and ID.
+Hybrid ranking uses Reciprocal Rank Fusion with k=60 across rule rank and semantic rank. RRF combines the two ranked lists without requiring their score scales to be comparable; k=60 reduces the influence of small rank changes near the top. Each result reports rule and semantic RRF contributions. Ties use title and ID.
 
 ## AI-assist and agent readiness
 
 Resume extraction is dictionary/rule based and never executes text. It detects known skills and simple experience phrases, returning level and confidence. Hidden instructions are ignored because text is matched only against a fixed dictionary and regex; it is not passed to a shell, template or prompt. An optional LLM provider can be added behind a provider interface and `LLM_PROVIDER` configuration. It would be off by default and can point to a cloud or OpenAI-compatible self-hosted endpoint without API route changes.
 
-Tool definitions are in `agent/tools.json` and available at `/agent/tools`. An agent authenticates as a learner, calls search/explain/extract over the REST API, and logs tool calls. It can never receive a profile route for another user: profile routes derive the user from JWT and opportunity management requires admin JWT.
+Tool definitions are in `backend/agent/tools.json` and available at `/agent/tools`. An agent authenticates as a learner, calls search/explain/extract over the REST API, and logs tool calls. `explain_match` requests `/matches/{opportunity_id}` to return a single opportunity's rule-based explanation. Public sign-up always creates a learner; the seeded admin account is provisioned separately. Profile routes derive the user from JWT and opportunity management requires admin JWT.
 
 ## Evaluation
 
-Run `python evaluate.py`. The script uses 10 synthetic learner profiles and 12 labelled opportunities. It writes `evaluation/labelled_data.json` and reports precision@5 and NDCG@5.
+From the `backend/` directory, run `python evaluate.py`. The script uses 10 synthetic learner profiles and 12 labelled opportunities. It reports precision@5 and NDCG@5 using the checked-in `backend/evaluation/labelled_data.json`.
 
 <!-- EVALUATION_RESULTS -->
 | Mode | Precision@5 | NDCG@5 |
@@ -76,8 +81,12 @@ The deterministic fallback embedding produced the same ranking quality as the ru
 - One learner profile per user; profile visibility is self-only.
 - Resume extraction is intentionally conservative and cannot infer all real skills.
 - Semantic retrieval uses one local general embedding model, not a domain-fine-tuned model.
-- Production pgvector is not required by the implementation: vectors are portable JSON and cosine ranking is in process.
-- No stretch goals were implemented.
+- The evaluation set is small and synthetic; collect real learner relevance judgements and compare ranking quality before making production claims.
+- The minimal React learner UI is included as an optional stretch goal.
+
+## If I had another week
+
+I would collect a larger set of real, consented learner-opportunity relevance labels, tune and compare the rule, semantic, and hybrid rankers against that set, and add an admin interface for managing opportunities. I would also measure pgvector recall and latency as the opportunity catalogue grows.
 
 ## AI tools used
 

@@ -22,7 +22,7 @@
         "properties": {"opportunity_id": {"type": "integer"}},
         "required": ["opportunity_id"]
       },
-      "http": {"method": "GET", "path": "/matches?mode=rules", "auth": "bearer"}
+      "http": {"method": "GET", "path": "/matches/{opportunity_id}", "auth": "bearer"}
     },
     {
       "name": "extract_skills",

@@ -1,6 +1,17 @@
-from sqlalchemy import Column, Integer, String, Text, ForeignKey, JSON, Float
+from sqlalchemy import Column, Integer, String, Text, ForeignKey, JSON, Float, Index
 from sqlalchemy.orm import relationship
+from sqlalchemy.types import TypeDecorator
+from pgvector.sqlalchemy import Vector
 from .database import Base
+
+class EmbeddingVector(TypeDecorator):
+    impl = JSON
+    cache_ok = True
+
+    def load_dialect_impl(self, dialect):
+        if dialect.name == "postgresql":
+            return dialect.type_descriptor(Vector(384))
+        return dialect.type_descriptor(JSON())
 
 class User(Base):
     __tablename__ = "users"
@@ -16,7 +27,7 @@ class Profile(Base):
     user_id = Column(Integer, ForeignKey("users.id"), unique=True, nullable=False)
     bio = Column(Text, default="")
     skills = Column(JSON, nullable=False, default=list)
-    vector = Column(JSON, nullable=True)
+    vector = Column(EmbeddingVector(), nullable=True)
     user = relationship("User", back_populates="profile")
 
 class Opportunity(Base):
@@ -27,4 +38,11 @@ class Opportunity(Base):
     description = Column(Text, nullable=False)
     location_or_mode = Column(String, nullable=False)
     required_skills = Column(JSON, nullable=False)
-    vector = Column(JSON, nullable=True)
+    vector = Column(EmbeddingVector(), nullable=True)
+
+Index(
+    "ix_opportunities_vector_hnsw",
+    Opportunity.vector,
+    postgresql_using="hnsw",
+    postgresql_ops={"vector": "vector_cosine_ops"},
+).ddl_if(dialect="postgresql")

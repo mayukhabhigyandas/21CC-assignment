@@ -1,36 +1,59 @@
+import os
 from fastapi import FastAPI, Depends, HTTPException, Query, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from sqlalchemy import or_
+from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import bindparam, Float, or_
 from sqlalchemy.orm import Session
+from pgvector.sqlalchemy import Vector
 
-from .database import Base, engine, get_db
+from .database import get_db, initialize_database
 from .models import User, Profile, Opportunity
 from .schemas import *
 from .auth import hash_password, verify_password, create_token, current_user, admin_user
-from .embeddings import embed_text
+from .embeddings import cosine, embed_text
 from .matching import normalize_skill, rule_scores, semantic_rank, hybrid_rank
 from .extraction import extract_skills
 
 app = FastAPI(title="Skill Opportunity Matcher", version="1.0")
+cors_origins = [
+    origin.strip()
+    for origin in os.getenv(
+        "FRONTEND_ORIGINS",
+        "http://localhost:5173,http://127.0.0.1:5173",
+    ).split(",")
+    if origin.strip()
+]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=cors_origins,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.exception_handler(RequestValidationError)
 async def validation_handler(request: Request, exc: RequestValidationError):
-    return JSONResponse(status.HTTP_422_UNPROCESSABLE_ENTITY, {"error": {"code": "VALIDATION_ERROR", "message": "Invalid request", "details": exc.errors()}})
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content={"error": {"code": "VALIDATION_ERROR", "message": "Invalid request", "details": exc.errors()}},
+    )
 
 @app.exception_handler(HTTPException)
 async def http_handler(request: Request, exc: HTTPException):
-    return JSONResponse(exc.status_code, {"error": {"code": "HTTP_ERROR", "message": exc.detail}})
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"error": {"code": "HTTP_ERROR", "message": exc.detail}},
+    )
 
 @app.on_event("startup")
 def startup():
-    Base.metadata.create_all(engine)
+    initialize_database()
 
 @app.post("/auth/signup", response_model=Token)
 def signup(payload: UserCreate, db: Session = Depends(get_db)):
     if db.query(User).filter_by(email=payload.email.lower()).first():
         raise HTTPException(409, "Email already registered")
-    user = User(email=payload.email.lower(), password_hash=hash_password(payload.password), role=payload.role)
+    user = User(email=payload.email.lower(), password_hash=hash_password(payload.password), role="learner")
     db.add(user)
     db.flush()
     if user.role == "learner":
@@ -148,25 +171,64 @@ def opportunity_row(row: Opportunity) -> dict:
             "location_or_mode": row.location_or_mode, "required_skills": row.required_skills}
 
 def opportunity_dict(row: Opportunity) -> dict:
-    return {**opportunity_row(row), "vector": row.vector}
+    return {
+        **opportunity_row(row),
+        "vector": list(row.vector) if row.vector is not None else [],
+    }
 
-@app.get("/matches")
-def matches(mode: str = "hybrid", type: str | None = None, limit: int = Query(20, ge=1, le=100),
-            db: Session = Depends(get_db), user: User = Depends(current_user)):
+def public_opportunity(opportunity: dict) -> dict:
+    return {key: value for key, value in opportunity.items() if key != "vector"}
+
+def _rank_matches(
+    mode: str,
+    opportunity_type: str | None,
+    limit: int,
+    db: Session,
+    user: User,
+    opportunity_id: int | None = None,
+):
     if user.role != "learner": raise HTTPException(403, "Learner role required")
     if mode not in ("rules", "hybrid"): raise HTTPException(422, "mode must be rules or hybrid")
-    if type and type not in ("job", "course"): raise HTTPException(422, "type must be job or course")
+    if opportunity_type and opportunity_type not in ("job", "course"): raise HTTPException(422, "type must be job or course")
     profile = db.query(Profile).filter_by(user_id=user.id).first()
     if not profile:
         profile = Profile(user_id=user.id, bio="", skills=[], vector=embed_text(""))
+    profile_vector = list(profile.vector) if profile.vector is not None else []
     query = db.query(Opportunity)
-    if type: query = query.filter(Opportunity.type == type)
-    opportunities = [opportunity_dict(row) for row in query.all()]
+    if opportunity_type: query = query.filter(Opportunity.type == opportunity_type)
+    if opportunity_id is not None: query = query.filter(Opportunity.id == opportunity_id)
+    opportunity_rows = query.all()
+    if opportunity_id is not None and not opportunity_rows:
+        raise HTTPException(404, "Opportunity not found")
+    opportunities = [opportunity_dict(row) for row in opportunity_rows]
     rules = rule_scores(profile.skills or [], opportunities)
-    semantic = semantic_rank(profile.vector or [], opportunities)
+    semantic = []
+    if mode == "hybrid":
+        if profile_vector and db.get_bind().dialect.name == "postgresql":
+            semantic_query = db.query(Opportunity).filter(Opportunity.vector.is_not(None))
+            if opportunity_type:
+                semantic_query = semantic_query.filter(Opportunity.type == opportunity_type)
+            if opportunity_id is not None:
+                semantic_query = semantic_query.filter(Opportunity.id == opportunity_id)
+            distance = Opportunity.vector.op("<=>", return_type=Float)(
+                bindparam("query_vector", profile_vector, type_=Vector(384))
+            )
+            semantic_rows = semantic_query.order_by(distance).limit(20).all()
+            semantic = [
+                {
+                    "opportunity": opportunity_dict(row),
+                    "semantic_score": cosine(
+                        profile_vector,
+                        list(row.vector) if row.vector is not None else [],
+                    ),
+                }
+                for row in semantic_rows
+            ]
+        else:
+            semantic = semantic_rank(profile_vector, opportunities)
     if mode == "rules":
         return {"items": [{
-            "opportunity": r["opportunity"],
+            "opportunity": public_opportunity(r["opportunity"]),
             "score": r["score"],
             "matched_skills": r["matched"],
             "missing_skills": r["missing"],
@@ -174,13 +236,23 @@ def matches(mode: str = "hybrid", type: str | None = None, limit: int = Query(20
             "signals": {"rule": r["score"], "semantic": None}
         } for r in rules[:limit]]}
     return {"items": [{
-        "opportunity": r["rule"]["opportunity"],
+        "opportunity": public_opportunity(r["rule"]["opportunity"]),
         "score": r["score"],
         "matched_skills": r["rule"]["matched"],
         "missing_skills": r["rule"]["missing"],
         "explanation": r["rule"]["explanation"],
         "signals": {"rule_contribution": r["rule_contribution"], "semantic_contribution": r["semantic_contribution"]}
     } for r in hybrid_rank(rules, semantic, limit)]}
+
+@app.get("/matches")
+def matches(mode: str = "hybrid", type: str | None = None, limit: int = Query(20, ge=1, le=100),
+            db: Session = Depends(get_db), user: User = Depends(current_user)):
+    return _rank_matches(mode, type, limit, db, user)
+
+@app.get("/matches/{opportunity_id}")
+def explain_match(opportunity_id: int, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    result = _rank_matches("rules", None, 1, db, user, opportunity_id)
+    return result["items"][0]
 
 @app.get("/agent/tools")
 def agent_tools():
